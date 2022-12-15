@@ -1,0 +1,446 @@
+%% Gagandeep Thapar; AERO 560 HW3
+
+% housekeeping
+clc;
+clearvars;
+close all;
+
+%% Problem 1
+orbit.rad = 6378;   % [km] rad of earth
+orbit.mu = 398600;  % [km3/s2] grav parameter of earth
+
+% givens
+z = 700;
+sat.A = 3;
+sat.del_CP = 1;
+sat.Cd = 2.2;
+
+% work
+fprintf('\nOrbital Parameters Calculated:\n')
+
+v = sqrt(orbit.mu/(orbit.rad+z));
+T = 2*pi*(orbit.rad + z)^1.5 / sqrt(orbit.mu);
+
+fprintf('\tRadius of Orbit [km]: %.2f\n', orbit.rad+z);
+fprintf('\tVelocity of SC [km/s]: %.2f\n', v);
+fprintf('\tOrbital Period [min]: %.2f\n', T/60);
+
+fprintf('\nUsing the Atmospheric Model from Orbits II (attached)...\n')
+
+rho = 3.614e-14;
+F = 0.5 * sat.Cd * rho * sat.A * v^2;
+
+fprintf('\tAssuming Cd [~]: 2.2\n')
+fprintf('\tDensity @ %d km [kg/m3]: %.2fe-14\n', z, rho*1e14);
+fprintf('\tDrag Force [N]: %.2fe-12\n',F*1e12);
+
+M = F*sat.del_CP * T;
+
+fprintf('\nDrag Calcs:\n')
+fprintf('\tDrag Momentum across Orbit Period [Nms]: %.2fe-8\n', M*1e8);
+
+
+%% Problem 2
+
+% givens
+orbit.h = 55759;    % [kg/m2] angular momentum
+orbit.ecc = 0.001;  % [~] eccentricity
+orbit.raan = 10;    % [deg] raan
+orbit.inc = 42;     % [deg] inc
+orbit.omega = 22;   % [deg] arg of perigee
+orbit.theta = 0;    % [deg] true anomaly
+orbit.mu = 398600;
+
+sat.mass = 500;   % [kg]
+sat.l = 1.5;    % [m] length dimension
+sat.w = 1.5;    % [m] width dimension
+sat.h = 3;    % [m] height dimension
+
+sat.J = sat.mass/12 * [sat.l^2 + sat.h^2, 0, 0;
+                       0, sat.w^2 + sat.h^2, 0;
+                       0, 0, sat.l^2 + sat.w^2];    % principal inertial matrix
+
+sat.des_e_lvlh = [0;0;0];
+sat.des_n_lvlh = 1;
+sat.des_q_lvlh = [sat.des_e_lvlh;sat.des_n_lvlh];
+sat.zeta = 0.7*eye(3);    % [~] Dampening Coefficient
+sat.wn = 0.5*eye(3);
+
+wheel.I = 1.2;
+wheel.theta = 57;
+wheel.As = [sind(wheel.theta), 0, -sind(wheel.theta), 0;
+            0, sind(wheel.theta), 0, -sind(wheel.theta);
+            cosd(wheel.theta), cosd(wheel.theta), cosd(wheel.theta), cosd(wheel.theta)];
+
+cmg.r = 0.2;
+cmg.h = 0.05;
+cmg.mass = 4.5;
+cmg.omega = 800*[1;1;1;1];
+cmg.theta = 57;
+cmg.gamma = 0*[1;1;1;1];
+
+cmg.J = cmg.mass/12 * [cmg.h^2 + 3*cmg.r^2, 0, 0;
+                       0, cmg.h^2 + 3*cmg.r^2, 0;
+                       0, 0, 6*cmg.r^2];    % principal inertial matrix]
+
+
+
+% initial conditions
+[orbit.R0, orbit.V0] = COES2STATE(orbit.h, orbit.ecc, orbit.inc, orbit.raan, orbit.omega, orbit.theta, orbit.mu);
+orbit.R = orbit.R0;
+orbit.V = orbit.V0;
+orbit.T = 2*pi*norm(orbit.R0)^(1.5)/sqrt(orbit.mu);
+orbit.n = 2*pi/orbit.T;
+
+orbit.state0 = [orbit.R;orbit.V];
+
+sat.w0_lvlh = [0;0;0]; % initial ang vel
+sat.e0_lvlh = [0.5;0.5;0.5];   % initial quat
+sat.n0_lvlh = 0.5;
+sat.q0_lvlh = [sat.e0_lvlh;sat.n0_lvlh];
+sat.euls0_lvlh = quat_eul([sat.e0_lvlh;sat.n0_lvlh]); % initial euler
+
+sat.state0_lvlh = [sat.w0_lvlh;sat.e0_lvlh;sat.n0_lvlh;sat.euls0_lvlh];  % initial state
+
+sat.Kd = 2*sat.J*sat.zeta*sat.wn;
+sat.Kp = 2*(sat.J)*(sat.wn^2);
+
+st = sind(cmg.theta);
+ct = cosd(cmg.theta);
+
+cmg.Ag = [st 0 -st 0;
+            0 st 0 -st;
+            ct ct ct ct];
+
+cmg.At = [-ct 0 ct 0;
+            0 -ct 0 ct;
+            st st st st];
+
+cmg.As = [0 -1 0 1;
+            1 0 -1 0;
+            0 0 0 0];
+
+cmg.Iws = cmg.J(3,3)*eye(4);
+cmg.Iwg = cmg.J(1,1)*eye(4);
+cmg.Iwt = cmg.J(2,2)*eye(4);
+
+%% run sim
+t_max = 50;    % [sec] sim time
+out_A = sim('hw3_rw', t_max);
+out_B = sim('hw3_cmg', t_max);
+
+%% unpack data: A
+A_t = squeeze(out_A.tout)';
+
+A_orbit.w_lvlh = squeeze(out_A.w_LVLH_ECI)';
+A_orbit.q_lvlh = squeeze(out_A.q_LVLH_ECI)';
+A_orbit.eul_lvlh = squeeze(out_A.eul_LVLH_ECI)';
+
+A_orbit.dist_torque_lvlh = squeeze(out_A.dist_torque)';
+
+A_sat.w_lvlh = squeeze(out_A.w_Body_LVLH)';
+A_sat.q_lvlh = squeeze(out_A.q_Body_LVLH)';
+A_sat.eul_lvlh = squeeze(out_A.eul_Body_LVLH)';
+
+A_sat.w_eci = squeeze(out_A.w_Body_ECI)';
+A_sat.q_eci = squeeze(out_A.q_Body_ECI)';
+A_sat.eul_eci = squeeze(out_A.eul_Body_ECI)';
+
+A_command_gimbal = squeeze(out_A.gamma)';
+
+%% unpack data: B
+B_t = squeeze(out_B.tout)';
+
+B_orbit.w_lvlh = squeeze(out_B.w_LVLH_ECI)';
+B_orbit.q_lvlh = squeeze(out_B.q_LVLH_ECI)';
+B_orbit.eul_lvlh = squeeze(out_B.eul_LVLH_ECI)';
+
+B_orbit.dist_torque_lvlh = squeeze(out_B.dist_torque)';
+
+B_sat.w_lvlh = squeeze(out_B.w_Body_LVLH)';
+B_sat.q_lvlh = squeeze(out_B.q_Body_LVLH)';
+B_sat.eul_lvlh = squeeze(out_B.eul_Body_LVLH)';
+
+B_sat.w_eci = squeeze(out_B.w_Body_ECI)';
+B_sat.q_eci = squeeze(out_B.q_Body_ECI)';
+B_sat.eul_eci = squeeze(out_B.eul_Body_ECI)';
+
+B_command_gimbal = squeeze(out_B.gamma)';
+
+%% plot data: A
+figure
+
+subplot(3,3,1)
+hold on
+plot(A_t, A_sat.q_lvlh(:,1))
+plot(A_t, A_sat.q_lvlh(:,2))
+plot(A_t, A_sat.q_lvlh(:,3))
+plot(A_t, A_sat.q_lvlh(:,4))
+hold off
+grid on
+title('Quaternion from Body to LVLH')
+xlabel('Time [sec]')
+ylabel('Quaternion')
+legend('\epsilon_1','\epsilon_2','\epsilon_3','\eta')
+
+subplot(3,3,2)
+hold on
+plot(A_t, A_orbit.q_lvlh(:,1))
+plot(A_t, A_orbit.q_lvlh(:,2))
+plot(A_t, A_orbit.q_lvlh(:,3))
+plot(A_t, A_orbit.q_lvlh(:,4))
+hold off
+grid on
+title('Quaternion from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Quaternion')
+legend('\epsilon_1','\epsilon_2','\epsilon_3','\eta')
+
+subplot(3,3,3)
+hold on
+plot(A_t, A_sat.q_eci(:,1))
+plot(A_t, A_sat.q_eci(:,2))
+plot(A_t, A_sat.q_eci(:,3))
+plot(A_t, A_sat.q_eci(:,4))
+hold off
+grid on
+title('Quaternion from Body to ECI')
+xlabel('Time [sec]')
+ylabel('Quaternion')
+legend('\epsilon_1','\epsilon_2','\epsilon_3','\eta')
+
+subplot(3,3,4)
+hold on
+plot(A_t, A_sat.eul_lvlh(:,1))
+plot(A_t, A_sat.eul_lvlh(:,2))
+plot(A_t, A_sat.eul_lvlh(:,3))
+hold off
+grid on
+title('Euler Angles from Body to LVLH')
+xlabel('Time [sec]')
+ylabel('Euler Angle [rad]')
+legend('\phi', '\theta', '\psi')
+
+subplot(3,3,5)
+hold on
+plot(A_t, A_orbit.eul_lvlh(:,1))
+plot(A_t, A_orbit.eul_lvlh(:,2))
+plot(A_t, A_orbit.eul_lvlh(:,3))
+hold off
+grid on
+title('Euler Angles from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Euler Angle [rad]')
+legend('\phi', '\theta', '\psi')
+
+subplot(3,3,6)
+hold on
+plot(A_t, A_sat.eul_eci(:,1))
+plot(A_t, A_sat.eul_eci(:,2))
+plot(A_t, A_sat.eul_eci(:,3))
+hold off
+grid on
+title('Euler Angles from Body to ECI')
+xlabel('Time [sec]')
+ylabel('Euler Angle [rad]')
+legend('\phi', '\theta', '\psi')
+
+
+subplot(3,3,7)
+hold on
+plot(A_t, A_sat.w_lvlh(:,1))
+plot(A_t, A_sat.w_lvlh(:,2))
+plot(A_t, A_sat.w_lvlh(:,3))
+hold off
+grid on
+title('\omega from Body to LVLH')
+xlabel('Time [sec]')
+ylabel('Rate [rad/s]')
+legend('\omega_x', '\omega_y', '\omega_z')
+
+subplot(3,3,8)
+hold on
+plot(A_t, A_orbit.w_lvlh(:,1))
+plot(A_t, A_orbit.w_lvlh(:,2))
+plot(A_t, A_orbit.w_lvlh(:,3))
+hold off
+grid on
+title('\omega from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Rate [rad/s]')
+legend('\omega_x', '\omega_y', '\omega_z')
+
+subplot(3,3,9)
+hold on
+plot(A_t, A_sat.w_eci(:,1))
+plot(A_t, A_sat.w_eci(:,2))
+plot(A_t, A_sat.w_eci(:,3))
+hold off
+grid on
+title('\omega from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Rate [rad/s]')
+legend('\omega_x', '\omega_y', '\omega_z')
+
+sgtitle('T_{C} = -K_psign(n_e)\epsilon_e - K_d\omega')
+
+%% plot data: B
+figure
+
+subplot(3,3,1)
+hold on
+plot(B_t, B_sat.q_lvlh(:,1))
+plot(B_t, B_sat.q_lvlh(:,2))
+plot(B_t, B_sat.q_lvlh(:,3))
+plot(B_t, B_sat.q_lvlh(:,4))
+hold off
+grid on
+title('Quaternion from Body to LVLH')
+xlabel('Time [sec]')
+ylabel('Quaternion')
+legend('\epsilon_1','\epsilon_2','\epsilon_3','\eta')
+
+subplot(3,3,2)
+hold on
+plot(B_t, B_orbit.q_lvlh(:,1))
+plot(B_t, B_orbit.q_lvlh(:,2))
+plot(B_t, B_orbit.q_lvlh(:,3))
+plot(B_t, B_orbit.q_lvlh(:,4))
+hold off
+grid on
+title('Quaternion from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Quaternion')
+legend('\epsilon_1','\epsilon_2','\epsilon_3','\eta')
+
+subplot(3,3,3)
+hold on
+plot(B_t, B_sat.q_eci(:,1))
+plot(B_t, B_sat.q_eci(:,2))
+plot(B_t, B_sat.q_eci(:,3))
+plot(B_t, B_sat.q_eci(:,4))
+hold off
+grid on
+title('Quaternion from Body to ECI')
+xlabel('Time [sec]')
+ylabel('Quaternion')
+legend('\epsilon_1','\epsilon_2','\epsilon_3','\eta')
+
+subplot(3,3,4)
+hold on
+plot(B_t, B_sat.eul_lvlh(:,1))
+plot(B_t, B_sat.eul_lvlh(:,2))
+plot(B_t, B_sat.eul_lvlh(:,3))
+hold off
+grid on
+title('Euler Angles from Body to LVLH')
+xlabel('Time [sec]')
+ylabel('Euler Angle [rad]')
+legend('\phi', '\theta', '\psi')
+
+subplot(3,3,5)
+hold on
+plot(B_t, B_orbit.eul_lvlh(:,1))
+plot(B_t, B_orbit.eul_lvlh(:,2))
+plot(B_t, B_orbit.eul_lvlh(:,3))
+hold off
+grid on
+title('Euler Angles from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Euler Angle [rad]')
+legend('\phi', '\theta', '\psi')
+
+subplot(3,3,6)
+hold on
+plot(B_t, B_sat.eul_eci(:,1))
+plot(B_t, B_sat.eul_eci(:,2))
+plot(B_t, B_sat.eul_eci(:,3))
+hold off
+grid on
+title('Euler Angles from Body to ECI')
+xlabel('Time [sec]')
+ylabel('Euler Angle [rad]')
+legend('\phi', '\theta', '\psi')
+
+
+subplot(3,3,7)
+hold on
+plot(B_t, B_sat.w_lvlh(:,1))
+plot(B_t, B_sat.w_lvlh(:,2))
+plot(B_t, B_sat.w_lvlh(:,3))
+hold off
+grid on
+title('\omega from Body to LVLH')
+xlabel('Time [sec]')
+ylabel('Rate [rad/s]')
+legend('\omega_x', '\omega_y', '\omega_z')
+
+subplot(3,3,8)
+hold on
+plot(B_t, B_orbit.w_lvlh(:,1))
+plot(B_t, B_orbit.w_lvlh(:,2))
+plot(B_t, B_orbit.w_lvlh(:,3))
+hold off
+grid on
+title('\omega from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Rate [rad/s]')
+legend('\omega_x', '\omega_y', '\omega_z')
+
+subplot(3,3,9)
+hold on
+plot(B_t, B_sat.w_eci(:,1))
+plot(B_t, B_sat.w_eci(:,2))
+plot(B_t, B_sat.w_eci(:,3))
+hold off
+grid on
+title('\omega from LVLH to ECI')
+xlabel('Time [sec]')
+ylabel('Rate [rad/s]')
+legend('\omega_x', '\omega_y', '\omega_z')
+
+sgtitle('T_{C} = -K_psign(n_e)\epsilon_e - K_d(1-\epsilon_e^T\epsilon_e)\omega')
+
+%% plot misc
+
+figure
+hold on
+plot(A_t, A_command_gimbal(:,1))
+plot(A_t, A_command_gimbal(:,2))
+plot(A_t, A_command_gimbal(:,3))
+plot(A_t, A_command_gimbal(:,4))
+hold off
+title('Gimbal Angles')
+
+
+
+
+function eul = quat_eul(q)
+
+    n = q(4);
+    e = q(1:3);
+
+    q = [n, e(1), e(2), e(3)];
+
+    phi = atan2(2*(q(1)*q(2) + q(3)*q(4)), 1 - 2*(q(2)^2 + q(3)^2));
+    theta = asin(2*(q(1)*q(3) - q(4)*q(2)));
+    psi = atan2(2*(q(1)*q(4) + q(2)*q(3)), 1-2*(q(3)^2 + q(4)^2));
+
+    eul = [phi; theta; psi];
+
+end
+
+function wx = skewSymmetric(w)
+        wx = [0, -1*w(3), w(2);
+             w(3), 0, -1*w(1);
+             -1*w(2), w(1), 0];
+end
+
+function Ad = diagA(A)
+    [~,x] = size(A);
+    Ad = zeros(x, 3*x);
+    for i = 1:x
+        Ad(i,3*(i-1)+1:3*(i-1)+3) = A(:,1)';
+    end
+end
+

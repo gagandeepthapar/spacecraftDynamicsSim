@@ -1,0 +1,209 @@
+%% Gagandeep Thapar; HW6 AERO 560
+
+%% Housekeeping
+
+clc;
+clear all;
+close all;
+
+% random seed
+seed = floor(sum(clock));
+%% Part 1
+
+% givens
+p1.wn = 2;
+p1.zeta = 0.7;
+p1.delT = 0.1;
+
+p1.x0 = 0.05;
+p1.xd0 = -0.01;
+p1.Q = 0.1;
+p1.R = 0.1;
+p1.sigma = 0.0035;
+p1.u = 0;
+
+% work
+p1.A = [0 1; -p1.wn^2 -2*p1.zeta*p1.wn];
+p1.B = [0;p1.wn^2];
+p1.C = eye(2);
+p1.D = zeros(2,1);
+p1.state0 = [p1.x0;p1.xd0];
+
+p1.sysC = ss(p1.A, p1.B, p1.C, p1.D);
+p1.sysD = c2d(p1.sysC, p1.delT);
+
+p1.F = p1.sysD.A;
+p1.G = p1.sysD.B;
+p1.H = p1.sysD.C;
+
+p1.L = p1.G;
+p1.M = p1.H;
+
+% simulate
+p1.outC = sim("AERO560_HW6Sim_Thapar.slx");
+p1.t = squeeze(p1.outC.tout)';
+p1.yC = squeeze(p1.outC.y_Clean)';
+p1.yN = squeeze(p1.outC.y_Noisy)';
+p1.xHat = squeeze(p1.outC.xHat);
+
+% plot
+figure
+subplot(2,1,1)
+hold on
+plot(p1.t, p1.yC(:,1))
+plot(p1.t, p1.yN(:,1))
+plot(p1.t, p1.xHat(:,1),'k', 'LineWidth', 2)
+hold off
+legend('Clean', 'Noisy', 'Kalman Estimate')
+title('Position Estimate')
+xlabel('Time [sec]')
+ylabel('Position [m]')
+
+subplot(2,1,2)
+hold on
+plot(p1.t, p1.yC(:,2))
+plot(p1.t, p1.yN(:,2))
+plot(p1.t, p1.xHat(:,2),'k', 'LineWidth', 2)
+hold off
+legend('Clean', 'Noisy', 'Kalman Estimate')
+title('Velocity Estimate')
+xlabel('Time [sec]')
+ylabel('Velocity [m/s]')
+
+%% Part 2
+% w = p2.w0;
+% n = p2.n0;
+% e = p2.e0;
+% 
+% a = p2.bA;
+% 
+% Ya = [n*eye(3)-skewSymmetric(e), -e];
+% Yb = [skewSymmetric(a), a; -a', 0];
+% 
+% Yaq = Ya*Yb;
+% 
+% Yaq*[e;n]
+% [zeros(3,3),Yaq;zeros(3,3),Yaq]*[w;e;n]
+
+%%
+close all
+clc
+
+% givens
+p2.delT = 1;
+p2.sA = [1;0;0];
+p2.bA = [0.3815;-0.0969;0.9193];
+
+p2.u = 0;
+p2.J = diag([27, 17, 25]);
+
+p2.w0 = [0.05;-0.05;0.05];
+p2.e0 = sin(0.5)/sqrt(3) * [1;1;1];
+p2.n0 = cos(0.5);
+
+p2.wHat0 = zeros(3,1);
+p2.eHat0 = zeros(3,1);
+p2.nHat0 = 0;
+
+p2.Pk0 = 0.1*eye(7);
+
+p2.sigQ = 0.001;
+p2.Q = p2.sigQ^2;
+
+p2.sigM = 0.01;
+p2.sigS = 0.005;
+p2.R = diag([p2.sigM^2, p2.sigM^2, p2.sigM^2, p2.sigS^2, p2.sigS^2, p2.sigS^2]);
+
+p2.v = 0;
+
+% simulate
+p2.out = sim('AERO560_HW6_Sim2_Thapar.slx', 30);
+
+p2.t = squeeze(p2.out.tout);
+p2.wTrue = squeeze(p2.out.wTrue);
+p2.eTrue = squeeze(p2.out.eTrue);
+p2.nTrue = squeeze(p2.out.nTrue)';
+p2.xHat = squeeze(p2.out.xHat)';
+
+p2.wHat = p2.xHat(:,1:3);
+p2.eHat = p2.xHat(:,4:6);
+p2.nHat = p2.xHat(:,7);
+
+% plot
+figure
+subplot(4,1,1)
+plot(p2.t, p2.eTrue(:,1), '--')
+xlabel('Time [sec]')
+ylabel('\epsilon_1')
+title('\epsilon_1')
+legend('True')
+
+subplot(4,1,2)
+plot(p2.t, p2.eTrue(:,2),'--')
+xlabel('Time [sec]')
+ylabel('\epsilon_2')
+title('\epsilon_2')
+legend('True')
+
+subplot(4,1,3)
+plot(p2.t, p2.eTrue(:,3),'--')
+xlabel('Time [sec]')
+ylabel('\epsilon_3')
+title('\epsilon_3')
+legend('True')
+
+subplot(4,1,4)
+plot(p2.t, p2.nTrue, '--')
+xlabel('Time [sec]')
+ylabel('\eta')
+title('\eta')
+legend('True')
+
+figure
+subplot(3,1,1)
+plot(p2.t, p2.wTrue(:,1), '--')
+xlabel('Time [sec]')
+ylabel('\omega_x [rad/s]')
+title('\omega_x')
+legend('True')
+
+subplot(3,1,2)
+plot(p2.t, p2.wTrue(:,2), '--')
+xlabel('Time [sec]')
+ylabel('\omega_y [rad/s]')
+title('\omega_y')
+legend('True')
+
+subplot(3,1,3)
+plot(p2.t, p2.wTrue(:,3), '--')
+xlabel('Time [sec]')
+ylabel('\omega_z [rad/s]')
+title('\omega_z')
+legend('True')
+
+
+figure
+hold on
+plot(p2.t, p2.eTrue(:,1), '--')
+plot(p2.t, p2.eTrue(:,2), '--')
+plot(p2.t, p2.eTrue(:,3), '--')
+plot(p2.t, p2.nTrue, '--')
+
+hold off
+legend('e1', 'e2', 'e3', 'n')
+
+figure
+hold on
+plot(p2.t, p2.wTrue(:,1), '--')
+plot(p2.t, p2.wTrue(:,2), '--')
+plot(p2.t, p2.wTrue(:,3), '--')
+hold off
+legend('wx', 'wy', 'wz')
+
+
+    
+function wx = skewSymmetric(w)
+    wx = [0, -1*w(3), w(2);
+         w(3), 0, -1*w(1);
+         -1*w(2), w(1), 0];
+end
